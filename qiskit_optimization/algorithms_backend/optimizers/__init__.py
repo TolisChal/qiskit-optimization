@@ -118,6 +118,9 @@ To install the ``NLOpt`` dependent package you can use ``pip install nlopt``.
 
 from .optimizer import Minimizer, Optimizer, OptimizerResult, OptimizerSupportLevel
 from .spsa import SPSA
+from .cobyla import COBYLA
+from .nelder_mead import NELDER_MEAD
+from .scipy_optimizer import SciPyOptimizer
 
 __all__ = [
     "Optimizer",
@@ -125,4 +128,7 @@ __all__ = [
     "OptimizerResult",
     "Minimizer",
     "SPSA",
+    "COBYLA",
+    "NELDER_MEAD",
+    "SciPyOptimizer",
 ]
