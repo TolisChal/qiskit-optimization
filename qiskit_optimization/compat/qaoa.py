@@ -22,10 +22,8 @@ from qiskit.circuit.library.n_local.qaoa_ansatz import QAOAAnsatz
 from qiskit.passmanager import BasePassManager
 from qiskit.primitives import BaseSamplerV1, BaseSamplerV2
 from qiskit.quantum_info.operators.base_operator import BaseOperator
-#from qiskit_algorithms.optimizers import Minimizer, Optimizer  # <-- we should remove any dependency to qiskit_algorithms (copy what is needed)
-                                                                #     here I somehow can't find it in https://github.com/qiskit-community/qiskit-algorithms/tree/main/qiskit_algorithms/optimizers
-#from qiskit_algorithms.utils.validation import validate_min  # <-- we should remove any dependency to qiskit_algorithms (copy what is needed)
-from .validation import validate_min # <-- here the copy from qiskit_algorithms
+from algorithms_backend.optimizers.optimizer import Minimizer, Optimizer
+from utils.validation import validate_min
 from .sampling_vqe import SamplingVQE
 
 class QAOA(SamplingVQE):

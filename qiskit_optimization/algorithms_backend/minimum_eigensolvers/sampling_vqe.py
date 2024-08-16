@@ -14,55 +14,58 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
+import logging
 from time import time
 from typing import Any
 
 import numpy as np
+
 from qiskit.circuit import QuantumCircuit
-from qiskit.passmanager import BasePassManager
-from qiskit.primitives import BaseSamplerV1, BaseSamplerV2
-from qiskit.primitives.utils import init_observable
-from qiskit.quantum_info.operators.base_operator import BaseOperator
+from qiskit.primitives import BaseSampler
 from qiskit.result import QuasiDistribution
-from algorithms_backend.exceptions import AlgorithmError
-from algorithms_backend.list_or_dict import ListOrDict
-from algorithms_backend.minimum_eigensolvers.sampling_mes import (
+from qiskit.quantum_info.operators.base_operator import BaseOperator
+
+from ..exceptions import AlgorithmError
+from ..list_or_dict import ListOrDict
+from ..optimizers import Minimizer, Optimizer, OptimizerResult
+from ..variational_algorithm import VariationalAlgorithm, VariationalResult
+from .diagonal_estimator import _DiagonalEstimator
+from .sampling_mes import (
     SamplingMinimumEigensolver,
     SamplingMinimumEigensolverResult,
 )
-from algorithms_backend.minimum_eigensolvers.sampling_vqe import (
-    SamplingVQEResult,
-    _compare_measurements,
-)
-from algorithms_backend.observables_evaluator import estimate_observables
-from algorithms_backend.optimizers.optimizer import Minimizer, Optimizer, OptimizerResult
-from utils import validate_bounds, validate_initial_point
+from ..observables_evaluator import estimate_observables
+from ..utils import validate_initial_point, validate_bounds
 
 # private function as we expect this to be updated in the next released
-from utils.set_batching import _set_default_batchsize
-from algorithms_backend.variational_algorithm import VariationalAlgorithm
+from ..utils.set_batching import _set_default_batchsize
 
-from .diagonal_estimator import _DiagonalEstimator
 
 logger = logging.getLogger(__name__)
 
 
 class SamplingVQE(VariationalAlgorithm, SamplingMinimumEigensolver):
     r"""The Variational Quantum Eigensolver algorithm, optimized for diagonal Hamiltonians.
+
     VQE is a hybrid quantum-classical algorithm that uses a variational technique to find the
     minimum eigenvalue of a given diagonal Hamiltonian operator :math:`H_{\text{diag}}`.
+
     In contrast to the :class:`~qiskit_algorithms.minimum_eigensolvers.VQE` class, the
     ``SamplingVQE`` algorithm is executed using a :attr:`sampler` primitive.
+
     An instance of ``SamplingVQE`` also requires an :attr:`ansatz`, a parameterized
     :class:`.QuantumCircuit`, to prepare the trial state :math:`|\psi(\vec\theta)\rangle`. It also
     needs a classical :attr:`optimizer` which varies the circuit parameters :math:`\vec\theta` to
     minimize the objective function, which depends on the chosen :attr:`aggregation`.
+
     The optimizer can either be one of Qiskit's optimizers, such as
     :class:`~qiskit_algorithms.optimizers.SPSA` or a callable with the following signature:
+
     .. code-block:: python
+
         from qiskit_algorithms.optimizers import OptimizerResult
+
         def my_minimizer(fun, x0, jac=None, bounds=None) -> OptimizerResult:
             # Note that the callable *must* have these argument names!
             # Args:
@@ -70,19 +73,26 @@ class SamplingVQE(VariationalAlgorithm, SamplingMinimumEigensolver):
             #     x0 (np.ndarray): the initial point for the optimization
             #     jac (callable, optional): the gradient of the objective function
             #     bounds (list, optional): a list of tuples specifying the parameter bounds
+
             result = OptimizerResult()
             result.x = # optimal parameters
             result.fun = # optimal function value
             return result
+
     The above signature also allows one to use any SciPy minimizer, for instance as
+
     .. code-block:: python
+
         from functools import partial
         from scipy.optimize import minimize
+
         optimizer = partial(minimize, method="L-BFGS-B")
+
     The following attributes can be set via the initializer but can also be read and updated once
     the ``SamplingVQE`` object has been constructed.
+
     Attributes:
-        sampler (BaseSamplerV1 or BaseSamplerV2): The sampler primitive to sample the circuits.
+        sampler (BaseSampler): The sampler primitive to sample the circuits.
         ansatz (QuantumCircuit): A parameterized quantum circuit to prepare the trial state.
         optimizer (Optimizer | Minimizer): A classical optimizer to find the minimum energy. This
             can either be an :class:`.Optimizer` or a callable implementing the
@@ -97,6 +107,7 @@ class SamplingVQE(VariationalAlgorithm, SamplingMinimumEigensolver):
             can access the intermediate data at each optimization step. These data are: the
             evaluation count, the optimizer parameters for the ansatz, the evaluated value, and the
             metadata dictionary.
+
     References:
         [1]: Barkoutsos, P. K., Nannicini, G., Robert, A., Tavernelli, I., and Woerner, S.,
             "Improving Variational Quantum Optimization using CVaR"
@@ -105,14 +116,13 @@ class SamplingVQE(VariationalAlgorithm, SamplingMinimumEigensolver):
 
     def __init__(
         self,
-        sampler: BaseSamplerV1 | BaseSamplerV2,
+        sampler: BaseSampler,
         ansatz: QuantumCircuit,
         optimizer: Optimizer | Minimizer,
         *,
         initial_point: np.ndarray | None = None,
         aggregation: float | Callable[[list[float]], float] | None = None,
         callback: Callable[[int, np.ndarray, float, dict[str, Any]], None] | None = None,
-        passmanager: BasePassManager | None = None,
     ) -> None:
         r"""
         Args:
@@ -138,7 +148,6 @@ class SamplingVQE(VariationalAlgorithm, SamplingMinimumEigensolver):
         self.optimizer = optimizer
         self.aggregation = aggregation
         self.callback = callback
-        self.passmanager = passmanager
 
         # this has to go via getters and setters due to the VariationalAlgorithm interface
         self._initial_point = initial_point
@@ -193,32 +202,17 @@ class SamplingVQE(VariationalAlgorithm, SamplingMinimumEigensolver):
 
         bounds = validate_bounds(self.ansatz)
 
-        if self.passmanager:
-            ansatz: QuantumCircuit = self.passmanager.run(self.ansatz)
-            layout = ansatz.layout
-            operator = init_observable(operator)
-            operator = operator.apply_layout(layout)
-            if aux_operators:
-                if isinstance(aux_operators, list):
-                    aux_operators = [op.apply_layout(layout) for op in aux_operators]
-                else:
-                    aux_operators = {
-                        key: op.apply_layout(layout) for key, op in aux_operators.items()
-                    }
-        else:
-            ansatz = self.ansatz
-
         # NOTE: we type ignore below because the `return_best_measurement=True` is guaranteed to
         # return a tuple
         evaluate_energy, best_measurement = self._get_evaluate_energy(  # type: ignore[misc]
-            operator, ansatz, return_best_measurement=True
+            operator, self.ansatz, return_best_measurement=True
         )
 
         start_time = time()
 
         if callable(self.optimizer):
             optimizer_result = self.optimizer(
-                fun=evaluate_energy,
+                fun=evaluate_energy,  # type: ignore[arg-type]
                 x0=initial_point,
                 jac=None,
                 bounds=bounds,
@@ -229,7 +223,7 @@ class SamplingVQE(VariationalAlgorithm, SamplingMinimumEigensolver):
             was_updated = _set_default_batchsize(self.optimizer)
 
             optimizer_result = self.optimizer.minimize(
-                fun=evaluate_energy,
+                fun=evaluate_energy,  # type: ignore[arg-type]
                 x0=initial_point,
                 bounds=bounds,
             )
@@ -246,23 +240,14 @@ class SamplingVQE(VariationalAlgorithm, SamplingMinimumEigensolver):
             optimizer_result.x,
         )
 
-        if isinstance(self.sampler, BaseSamplerV1):
-            final_state = self.sampler.run([ansatz], [optimizer_result.x]).result().quasi_dists[0]
-        else:
-            result = self.sampler.run([(ansatz, optimizer_result.x)]).result()[0]
-            creg = ansatz.cregs[0].name
-            counts = getattr(result.data, creg).get_counts()
-            shots = sum(counts.values())
-            final_state = QuasiDistribution(
-                {key: val / shots for key, val in counts.items()}, shots=shots
-            )
+        final_state = self.sampler.run([self.ansatz], [optimizer_result.x]).result().quasi_dists[0]
 
         if aux_operators is not None:
             aux_operators_evaluated = estimate_observables(
                 _DiagonalEstimator(sampler=self.sampler),
-                ansatz,
+                self.ansatz,
                 aux_operators,
-                optimizer_result.x,
+                optimizer_result.x,  # type: ignore[arg-type]
             )
         else:
             aux_operators_evaluated = None
@@ -270,7 +255,7 @@ class SamplingVQE(VariationalAlgorithm, SamplingMinimumEigensolver):
         return self._build_sampling_vqe_result(
             self.ansatz.copy(),
             optimizer_result,
-            aux_operators_evaluated,
+            aux_operators_evaluated,  # type: ignore[arg-type]
             best_measurement,
             final_state,
             optimizer_time,
@@ -286,17 +271,22 @@ class SamplingVQE(VariationalAlgorithm, SamplingMinimumEigensolver):
         | tuple[Callable[[np.ndarray], np.ndarray | float], dict[str, Any]]
     ):
         """Returns a function handle to evaluate the energy at given parameters.
+
         This is the objective function to be passed to the optimizer that is used for evaluation.
+
         Args:
             operator: The operator whose energy to evaluate.
             ansatz: The ansatz preparing the quantum state.
             return_best_measurement: If True, a handle to a dictionary containing the best
                 measurement evaluated with the cost function.
+
         Returns:
             A tuple of a callable evaluating the energy and (optionally) a dictionary containing the
             best measurement of the energy evaluation.
+
         Raises:
             AlgorithmError: If the circuit is not parameterized (i.e. has 0 free parameters).
+
         """
         num_parameters = ansatz.num_parameters
         if num_parameters == 0:
@@ -357,13 +347,49 @@ class SamplingVQE(VariationalAlgorithm, SamplingMinimumEigensolver):
         result = SamplingVQEResult()
         result.eigenvalue = optimizer_result.fun
         result.cost_function_evals = optimizer_result.nfev
-        result.optimal_point = optimizer_result.x
-        result.optimal_parameters = dict(zip(self.ansatz.parameters, optimizer_result.x))
+        result.optimal_point = optimizer_result.x  # type: ignore[assignment]
+        result.optimal_parameters = dict(
+            zip(self.ansatz.parameters, optimizer_result.x)  # type: ignore[arg-type]
+        )
         result.optimal_value = optimizer_result.fun
         result.optimizer_time = optimizer_time
-        result.aux_operators_evaluated = aux_operators_evaluated
+        result.aux_operators_evaluated = aux_operators_evaluated  # type: ignore[assignment]
         result.optimizer_result = optimizer_result
         result.best_measurement = best_measurement["best"]
         result.eigenstate = final_state
         result.optimal_circuit = ansatz
         return result
+
+
+class SamplingVQEResult(VariationalResult, SamplingMinimumEigensolverResult):
+    """The SamplingVQE Result."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._cost_function_evals: int | None = None
+
+    @property
+    def cost_function_evals(self) -> int | None:
+        """Returns number of cost optimizer evaluations"""
+        return self._cost_function_evals
+
+    @cost_function_evals.setter
+    def cost_function_evals(self, value: int) -> None:
+        """Sets number of cost function evaluations"""
+        self._cost_function_evals = value
+
+
+def _compare_measurements(candidate, current_best):
+    """Compare two best measurements. Returns True if the candidate is better than current value.
+
+    This compares the following two criteria, in this precedence:
+
+        1. The smaller objective value is better
+        2. The higher probability for the objective value is better
+
+    """
+    if candidate["value"] < current_best["value"]:
+        return True
+    elif candidate["value"] == current_best["value"]:
+        return candidate["probability"] > current_best["probability"]
+    return False

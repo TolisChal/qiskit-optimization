@@ -1,6 +1,6 @@
 # This code is part of a Qiskit project.
 #
-# (C) Copyright IBM 2019, 2023.
+# (C) Copyright IBM 2022, 2023.
 #
 # This code is licensed under the Apache License, Version 2.0. You may
 # obtain a copy of this license in the LICENSE.txt file in the root directory
@@ -10,21 +10,14 @@
 # copyright notice, and modified files need to carry a notice indicating
 # that they have been altered from the originals.
 
-"""
-Validation module
-"""
+"""Common qiskit_algorithms utility functions."""
 
-from typing import Set
+from .algorithm_globals import algorithm_globals
+from .validate_initial_point import validate_initial_point
+from .validate_bounds import validate_bounds
 
-
-def validate_min(name: str, value: float, minimum: float) -> None:
-    """
-    Args:
-        name: value name.
-        value: value to check.
-        minimum: minimum value allowed.
-    Raises:
-        ValueError: invalid value
-    """
-    if value < minimum:
-        raise ValueError(f"{name} must have value >= {minimum}, was {value}")
+__all__ = [
+    "algorithm_globals",
+    "validate_initial_point",
+    "validate_bounds",
+]

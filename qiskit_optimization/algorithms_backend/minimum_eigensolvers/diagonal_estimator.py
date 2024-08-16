@@ -1,6 +1,6 @@
 # This code is part of a Qiskit project.
 #
-# (C) Copyright IBM 2022, 2024.
+# (C) Copyright IBM 2022, 2023.
 #
 # This code is licensed under the Apache License, Version 2.0. You may
 # obtain a copy of this license in the LICENSE.txt file in the root directory
@@ -14,17 +14,27 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Mapping, MappingView, Sequence
+from collections.abc import Callable, Sequence, Mapping, Iterable, MappingView
 from typing import Any
+
+from dataclasses import dataclass
 
 import numpy as np
 from qiskit.circuit import QuantumCircuit
-from qiskit.primitives import BaseEstimator, BaseSamplerV1, BaseSamplerV2
-from qiskit.primitives.utils import _circuit_key, init_observable
+from qiskit.primitives import BaseSampler, BaseEstimator, EstimatorResult
+from qiskit.primitives.utils import init_observable, _circuit_key
 from qiskit.quantum_info import SparsePauliOp
 from qiskit.quantum_info.operators.base_operator import BaseOperator
-from algorithms_backend.algorithm_job import AlgorithmJob
-from algorithms_backend.minimum_eigensolvers.diagonal_estimator import _DiagonalEstimatorResult
+
+from qiskit_algorithms.algorithm_job import AlgorithmJob
+
+
+@dataclass(frozen=True)
+class _DiagonalEstimatorResult(EstimatorResult):
+    """A result from an expectation of a diagonal observable."""
+
+    # TODO make each measurement a dataclass rather than a dict
+    best_measurements: Sequence[Mapping[str, Any]] | None = None
 
 
 class _DiagonalEstimator(BaseEstimator):
@@ -32,12 +42,13 @@ class _DiagonalEstimator(BaseEstimator):
 
     def __init__(
         self,
-        sampler: BaseSamplerV1 | BaseSamplerV2,
+        sampler: BaseSampler,
         aggregation: float | Callable[[Iterable[tuple[float, float]]], float] | None = None,
         callback: Callable[[Sequence[Mapping[str, Any]]], None] | None = None,
         **options,
     ) -> None:
         r"""Evaluate the expectation of quantum state with respect to a diagonal operator.
+
         Args:
             sampler: The sampler used to evaluate the circuits.
             aggregation: The aggregation function to aggregate the measurement outcomes. If a float
@@ -45,6 +56,7 @@ class _DiagonalEstimator(BaseEstimator):
             callback: A callback which is given the best measurements of all circuits in each
                 evaluation.
             run_options: Options for the sampler.
+
         """
         super().__init__(options=options)
         self._circuits: list[QuantumCircuit] = []  # See Qiskit pull request 11051
@@ -102,29 +114,13 @@ class _DiagonalEstimator(BaseEstimator):
         parameter_values: Sequence[Sequence[float]],
         **run_options,
     ) -> _DiagonalEstimatorResult:
-        if isinstance(self.sampler, BaseSamplerV1):
-            job = self.sampler.run(
-                [self._circuits[i] for i in circuits],
-                parameter_values,
-                **run_options,
-            )
-            sampler_result = job.result()
-            metadata = sampler_result.metadata
-            samples = sampler_result.quasi_dists
-        else:  # BaseSamplerV2
-            job = self.sampler.run(
-                [(self._circuits[i], val) for i, val in zip(circuits, parameter_values)],
-                **run_options,
-            )
-            sampler_pub_result = job.result()
-            metadata = []
-            samples = []
-            for i, result in zip(circuits, sampler_pub_result):
-                creg = self._circuits[i].cregs[0].name
-                counts = getattr(result.data, creg).get_int_counts()
-                shots = sum(counts.values())
-                samples.append({key: val / shots for key, val in counts.items()})
-                metadata.append(result.metadata)
+        job = self.sampler.run(
+            [self._circuits[i] for i in circuits],
+            parameter_values,
+            **run_options,
+        )
+        sampler_result = job.result()
+        samples = sampler_result.quasi_dists
 
         # a list of dictionaries containing: {state: (measurement probability, value)}
         evaluations: list[dict[int, tuple[float, float]]] = [
@@ -155,7 +151,7 @@ class _DiagonalEstimator(BaseEstimator):
             self.callback(best_measurements)
 
         return _DiagonalEstimatorResult(
-            values=results, metadata=metadata, best_measurements=best_measurements
+            values=results, metadata=sampler_result.metadata, best_measurements=best_measurements
         )
 
 
