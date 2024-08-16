@@ -26,7 +26,7 @@ from qiskit.primitives.utils import init_observable, _circuit_key
 from qiskit.quantum_info import SparsePauliOp
 from qiskit.quantum_info.operators.base_operator import BaseOperator
 
-from qiskit_algorithms.algorithm_job import AlgorithmJob
+from qiskit_optimization.algorithms_backend.algorithm_job import AlgorithmJob
 
 
 @dataclass(frozen=True)

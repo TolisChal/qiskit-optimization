@@ -12,26 +12,12 @@
 
 """The Minimum Eigensolvers package."""
 
-from .adapt_vqe import AdaptVQE, AdaptVQEResult
-from .minimum_eigensolver import MinimumEigensolver, MinimumEigensolverResult
-from .numpy_minimum_eigensolver import NumPyMinimumEigensolver, NumPyMinimumEigensolverResult
-from .vqe import VQE, VQEResult
 from .sampling_mes import SamplingMinimumEigensolver, SamplingMinimumEigensolverResult
 from .sampling_vqe import SamplingVQE, SamplingVQEResult
-from .qaoa import QAOA
 
 __all__ = [
-    "AdaptVQE",
-    "AdaptVQEResult",
-    "MinimumEigensolver",
-    "MinimumEigensolverResult",
-    "NumPyMinimumEigensolver",
-    "NumPyMinimumEigensolverResult",
-    "VQE",
-    "VQEResult",
     "SamplingMinimumEigensolver",
     "SamplingMinimumEigensolverResult",
     "SamplingVQE",
     "SamplingVQEResult",
-    "QAOA",
 ]

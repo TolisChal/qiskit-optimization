@@ -36,10 +36,10 @@ from .sampling_mes import (
     SamplingMinimumEigensolverResult,
 )
 from ..observables_evaluator import estimate_observables
-from ..utils import validate_initial_point, validate_bounds
+from qiskit_optimization.utils import validate_initial_point, validate_bounds
 
 # private function as we expect this to be updated in the next released
-from ..utils.set_batching import _set_default_batchsize
+from qiskit_optimization.utils.set_batching import _set_default_batchsize
 
 
 logger = logging.getLogger(__name__)

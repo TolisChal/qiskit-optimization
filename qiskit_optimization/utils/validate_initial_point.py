@@ -17,7 +17,7 @@ from __future__ import annotations
 import numpy as np
 
 from qiskit.circuit import QuantumCircuit
-from qiskit_algorithms.utils.algorithm_globals import algorithm_globals
+from qiskit_optimization.utils.algorithm_globals import algorithm_globals
 
 
 def validate_initial_point(point: np.ndarray | None | None, circuit: QuantumCircuit) -> np.ndarray:
